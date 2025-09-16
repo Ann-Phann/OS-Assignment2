@@ -2,8 +2,12 @@ from mmu import MMU
 
 class RandMMU(MMU):
     def __init__(self, frames):
-        # TODO: Constructor logic for RandMMU
-        pass
+        # Constructor logic for RandMMU
+        self.total_disk_read = 0
+        self.total_disk_write = 0
+        self.total_page_fault = 0
+
+        self.page_frame = {}
 
     def set_debug(self):
         # TODO: Implement the method to set debug mode
