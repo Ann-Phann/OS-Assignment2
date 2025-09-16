@@ -3,11 +3,15 @@ from mmu import MMU
 
 class ClockMMU(MMU):
     def __init__(self, frames):
-        # TODO: Constructor logic for EscMMU
-        pass
+        # Constructor logic for EscMMU
+        self.total_disk_read = 0
+        self.total_disk_write = 0
+        self.total_page_fault = 0
+
+        self.page_frame = {}
 
     def set_debug(self):
-        # TODO: Implement the method to set debug mode
+        # Implement the method to set debug mode
         pass
 
     def reset_debug(self):
@@ -23,13 +27,13 @@ class ClockMMU(MMU):
         pass
 
     def get_total_disk_reads(self):
-        # TODO: Implement the method to get total disk reads
-        return -1
+        # Implement the method to get total disk reads
+        return self.total_disk_read
 
     def get_total_disk_writes(self):
-        # TODO: Implement the method to get total disk writes
-        return -1
+        # Implement the method to get total disk writes
+        return self.total_disk_write
 
     def get_total_page_faults(self):
-        # TODO: Implement the method to get total page faults
-        return -1
+        # Implement the method to get total page faults
+        return self.total_page_fault
