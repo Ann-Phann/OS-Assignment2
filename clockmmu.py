@@ -64,8 +64,13 @@ class ClockMMU(MMU):
             evict_page = self.page_table[evict_page_num]
 
             # check the use bit 
-            if not evict_page.use_bit: # found the one to evict 
-                if evict_page.dirty == True:
+            if evict_page.use_bit: 
+                logger.debug(f"Set use bit to False for {evict_page_num}")
+                evict_page.use_bit = False
+                
+            # give second chance 
+            else:
+                if evict_page.dirty:
                     self.total_disk_write += 1
                     logger.debug(f"Saving dirty page {evict_page_num} to disk")
 
@@ -73,12 +78,7 @@ class ClockMMU(MMU):
                 del self.page_table[evict_page_num]
                 logger.debug(f"Evict page {evict_page_num}")
                 break
-            # give second chance 
-            else:
-                logger.debug(f"Set use bit to False for {evict_page_num}")
-                evict_page.use_bit = False
-                self.clock_hand = (self.clock_hand + 1) % self.frames
-
+            self.clock_hand = (self.clock_hand + 1) % self.frames
 
 
     def read_memory(self, page_number):
