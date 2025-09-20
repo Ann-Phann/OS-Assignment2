@@ -14,7 +14,7 @@ class ClockMMU(MMU):
 
         self.frames = frames
         self.page_table = {}
-        self.loaded_pages = []
+        self.loaded_pages = [None] * frames
         self.clock_hand = 0
 
     def set_debug(self):
