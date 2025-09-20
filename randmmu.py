@@ -33,7 +33,7 @@ class RandMMU(MMU):
             # if is_write = true, mark page as dirty
             if is_write:
                 page_obj.dirty = True
-                logger.debug(f"Page hit: {page_number}{' (write)' if is_write else ''}")
+            logger.debug(f"Page hit: {page_number}{' (write)' if is_write else ''}")
             return
             
         
