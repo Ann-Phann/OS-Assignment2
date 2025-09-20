@@ -44,7 +44,7 @@ class ClockMMU(MMU):
 
         if len(self.loaded_pages) < self.frames:
             new_page = Page(page_number, dirty=is_write, use_bit = True)
-            self.loaded_pages.append(new_page)
+            self.loaded_pages.append(page_number)
             self.page_table[page_number] = new_page
         else:
             while True:
