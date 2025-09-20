@@ -77,11 +77,11 @@ class ClockMMU(MMU):
             self.clock_hand = (self.clock_hand + 1) % self.frames
 
 
-    def read_loaded_pages(self, page_number):
+    def read_memory(self, page_number):
         # Implement the method to read loaded_pages
         self.access_memory(page_number, False)
 
-    def write_loaded_page(self, page_number):
+    def write_memory(self, page_number):
         # Implement the method to is_write loaded_pages
         self.access_memory(page_number, True)
 
@@ -89,7 +89,7 @@ class ClockMMU(MMU):
         # Implement the method to get total disk reads
         return self.total_disk_read
 
-    def ge_total_disk_writes(self):
+    def get_total_disk_writes(self):
         # Implement the method to get total disk writes
         return self.total_disk_write
 
