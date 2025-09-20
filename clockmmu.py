@@ -2,7 +2,6 @@ import logging
 from mmu import MMU
 from page import Page
 
-
 logger = logging.getLogger(__name__)
 
 class ClockMMU(MMU):
@@ -21,68 +20,71 @@ class ClockMMU(MMU):
         # Implement the method to set debug mode
         logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.DEBUG)
 
+
     def reset_debug(self):
         # Implement the method to reset debug mode
         logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.WARNING)
 
     def access_memory(self, page_number, is_write):
-        # Page is already in loaded_pages
+        # page hit
         if page_number in self.page_table:
-            page = self.page_table[page_number]
-            page.use_bit = True  # recently used
+            # get Page object
+            page: Page = self.page_table[page_number]
+            page.use_bit = True
+
             if is_write:
                 page.dirty = True
-
-            logger.debug(f"Page hit: {page_number}{' (is_write)' if is_write else ''}\n")
+            logger.debug(f"Page hit: {page_number}{' (write)' if is_write else ''}\n")
             return
-
-        # Page fault
-        self.total_page_fault += 1
+       
+        # page fault
         self.total_disk_read += 1
+        self.total_page_fault += 1
         logger.debug(f"Page fault: {page_number}{' (write)' if is_write else ''}")
 
-        # Evict least recently used page
         self.evict_page()
 
-        # Load new page into loaded_pages
-        new_page = Page(page_number, is_write, use_bit=True)
+        # load new page to the correct spot
+        new_page = Page(page_number, dirty=is_write, use_bit=True)
         self.page_table[page_number] = new_page
+        self.loaded_pages[self.clock_hand] = page_number # overwrite the new page number
+        logger.debug(f"Loading new page {page_number}")
 
-        # Replace the evicted page with the current one
-        self.loaded_pages[self.clock_hand] = page_number
+        # move the clock
         self.clock_hand = (self.clock_hand + 1) % self.frames
-
-        logger.debug(f"Load new page {page_number}\n")
-
+       
     def evict_page(self):
         while True:
-            # Get the page number that clock hand is pointing at
+            # get the page object the clock is pointing at
             evict_page_num = self.loaded_pages[self.clock_hand]
+
+            # handle case when it is partially full or empty
             if evict_page_num is None:
                 break
+            evict_page: Page = self.page_table[evict_page_num]
 
-            page = self.page_table[evict_page_num]
-            if page.use_bit:
-                logger.debug(f"Clear use bit for page {evict_page_num}")
-                page.use_bit = False  # Clear use bit
-            else:  # evict not recently used page
-                # write page to disk if the page is marked as dirty
-                if page.dirty:
+            # check the use bit
+            if not evict_page.use_bit: # found the one to evict
+                if evict_page.dirty:
                     self.total_disk_write += 1
-                    logger.debug(f"is_write page {evict_page_num} to disk")
+                    logger.debug(f"Saving dirty page {evict_page_num} to disk")
 
+                # evict the old page
                 del self.page_table[evict_page_num]
                 logger.debug(f"Evict page {evict_page_num}")
                 break
-            self.clock_hand = (self.clock_hand + 1) % self.frames
-
+            # give second chance
+            else:
+                logger.debug(f"Set use bit to False for {evict_page_num}")
+                evict_page.use_bit = False
+                self.clock_hand = (self.clock_hand + 1) % self.frames
 
     def read_memory(self, page_number):
-        # Implement the method to read loaded_pages
+        # Implement the method to read memory
         self.access_memory(page_number, False)
 
     def write_memory(self, page_number):
-        # Implement the method to is_write loaded_pages
+        # Implement the method to write memory
         self.access_memory(page_number, True)
 
     def get_total_disk_reads(self):
@@ -96,3 +98,4 @@ class ClockMMU(MMU):
     def get_total_page_faults(self):
         # Implement the method to get total page faults
         return self.total_page_fault
+    
