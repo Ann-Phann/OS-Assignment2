@@ -26,74 +26,70 @@ class ClockMMU(MMU):
         logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.WARNING)
 
     def access_memory(self, page_number, is_write):
-        # page hit 
+        # Page is already in loaded_pages
         if page_number in self.page_table:
-            # get Page object
-            page: Page = self.page_table[page_number]
-            page.use_bit = True
-
+            page = self.page_table[page_number]
+            page.use_bit = True  # recently used
             if is_write:
                 page.dirty = True
-            logger.debug(f"Page hit: {page_number}{' (write)' if is_write else ''}\n")
+
+            logger.debug(f"Page hit: {page_number}{' (is_write)' if is_write else ''}\n")
             return
-        
-        # page fault
-        self.total_disk_read += 1
+
+        # Page fault
         self.total_page_fault += 1
+        self.total_disk_read += 1
         logger.debug(f"Page fault: {page_number}{' (write)' if is_write else ''}")
 
+        # Evict least recently used page
         self.evict_page()
 
-        # load new page to the correct spot 
-        new_page = Page(page_number, dirty=is_write, use_bit=True)
+        # Load new page into loaded_pages
+        new_page = Page(page_number, is_write, use_bit=True)
         self.page_table[page_number] = new_page
-        self.loaded_pages[self.clock_hand] = page_number # overwrite the new page number
-        logger.debug(f"Loading new page {page_number}")
 
-        # move the clock 
+        # Replace the evicted page with the current one
+        self.loaded_pages[self.clock_hand] = page_number
         self.clock_hand = (self.clock_hand + 1) % self.frames
-        
+
+        logger.debug(f"Load new page {page_number}\n")
+
     def evict_page(self):
         while True:
-            # get the page object the clock is pointing at 
+            # Get the page number that clock hand is pointing at
             evict_page_num = self.loaded_pages[self.clock_hand]
-
-            # handle case when it is partially full or empty 
             if evict_page_num is None:
                 break
-            evict_page = self.page_table[evict_page_num]
 
-            # check the use bit 
-            if evict_page.use_bit: 
-                logger.debug(f"Set use bit to False for {evict_page_num}")
-                evict_page.use_bit = False
-                
-            # give second chance 
-            else:
-                if evict_page.dirty:
+            page = self.page_table[evict_page_num]
+            if page.use_bit:
+                logger.debug(f"Clear use bit for page {evict_page_num}")
+                page.use_bit = False  # Clear use bit
+            else:  # evict not recently used page
+                # write page to disk if the page is marked as dirty
+                if page.dirty:
                     self.total_disk_write += 1
-                    logger.debug(f"Saving dirty page {evict_page_num} to disk")
+                    logger.debug(f"is_write page {evict_page_num} to disk")
 
-                # evict the old page
                 del self.page_table[evict_page_num]
                 logger.debug(f"Evict page {evict_page_num}")
                 break
             self.clock_hand = (self.clock_hand + 1) % self.frames
 
 
-    def read_memory(self, page_number):
-        # Implement the method to read memory
+    def read_loaded_pages(self, page_number):
+        # Implement the method to read loaded_pages
         self.access_memory(page_number, False)
 
-    def write_memory(self, page_number):
-        # Implement the method to write memory
+    def write_loaded_page(self, page_number):
+        # Implement the method to is_write loaded_pages
         self.access_memory(page_number, True)
 
-    def get_total_disk_reads(self):
+    def get_total_disk_read(self):
         # Implement the method to get total disk reads
         return self.total_disk_read
 
-    def get_total_disk_writes(self):
+    def ge_total_disk_write(self):
         # Implement the method to get total disk writes
         return self.total_disk_write
 
