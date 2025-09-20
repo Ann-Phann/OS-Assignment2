@@ -75,8 +75,10 @@ class ClockMMU(MMU):
 
             # give second chance 
             else:
+                logger.debug(f"Set use bit to False for {evict_page_num}")
                 evict_page.use_bit = False
-                # self.clock_hand = (self.clock_hand + 1) % self.frames
+            
+            self.clock_hand = (self.clock_hand + 1) % self.frames
 
 
 
