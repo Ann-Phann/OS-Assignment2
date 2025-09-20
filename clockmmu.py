@@ -85,11 +85,11 @@ class ClockMMU(MMU):
         # Implement the method to is_write loaded_pages
         self.access_memory(page_number, True)
 
-    def get_total_disk_read(self):
+    def get_total_disk_reads(self):
         # Implement the method to get total disk reads
         return self.total_disk_read
 
-    def ge_total_disk_write(self):
+    def ge_total_disk_writes(self):
         # Implement the method to get total disk writes
         return self.total_disk_write
 
