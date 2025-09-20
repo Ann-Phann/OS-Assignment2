@@ -72,7 +72,7 @@ class ClockMMU(MMU):
                 # evict the old page
                 del self.page_table[evict_page_num]
                 logger.debug(f"Evict page {evict_page_num}")
-
+                break
             # give second chance 
             else:
                 logger.debug(f"Set use bit to False for {evict_page_num}")
