@@ -42,42 +42,42 @@ class ClockMMU(MMU):
         self.total_page_fault += 1
         logger.debug(f"Page fault: {page_number}{' (write)' if is_write else ''}")
 
-        if len(self.loaded_pages) < self.frames:
-            new_page = Page(page_number, dirty=is_write, use_bit = True)
-            self.loaded_pages.append(page_number)
-            self.page_table[page_number] = new_page
-        else:
-            while True:
-                # get the page object the clock is pointing at 
-                evict_page_num = self.loaded_pages[self.clock_hand]
-                if evict_page_num is None:
-                    break
-                evict_page = self.page_table[evict_page_num]
+        self.evict_page()
 
-                # check the use bit 
-                if evict_page.use_bit == False: # found the one to evict 
-      
-                    if evict_page.dirty == True:
-                        self.total_disk_write += 1
-                        logger.debug(f"Saving dirty page {evict_page_num} to disk")
+        # load new page to the correct spot 
+        new_page = Page(page_number, dirty=is_write, use_bit=True)
+        self.page_table[page_number] = new_page
+        self.loaded_pages[self.clock_hand] = page_number # overwrite the new page number
+        logger.debug(f"Loading new page {page_number}")
 
-                    # evict the old page
-                    del self.page_table[evict_page_num]
-                    self.loaded_pages[self.clock_hand] = page_number # overwrite the new page number
+        # move the clock 
+        self.clock_hand = (self.clock_hand + 1) % self.frames
+        
+    def evict_page(self):
+        while True:
+            # get the page object the clock is pointing at 
+            evict_page_num = self.loaded_pages[self.clock_hand]
 
-                    # load the new page
-                    new_page = Page(page_number, dirty=is_write, use_bit=True)
-                    self.page_table[page_number] = new_page
-                    logger.debug(f"Evicting page {evict_page_num}, Loading new page {page_number}")
+            # handle case when it is partially full or empty 
+            if evict_page_num is None:
+                break
+            evict_page = self.page_table[evict_page_num]
 
-                    # move the clock 
-                    self.clock_hand = (self.clock_hand + 1) % self.frames
-                    break
+            # check the use bit 
+            if evict_page.use_bit == False: # found the one to evict 
+                if evict_page.dirty == True:
+                    self.total_disk_write += 1
+                    logger.debug(f"Saving dirty page {evict_page_num} to disk")
 
-                # give second chance 
-                else:
-                    evict_page.use_bit = False
-                    self.clock_hand = (self.clock_hand + 1) % self.frames
+                # evict the old page
+                del self.page_table[evict_page_num]
+                logger.debug(f"Evict page {evict_page_num}")
+
+            # give second chance 
+            else:
+                evict_page.use_bit = False
+                # self.clock_hand = (self.clock_hand + 1) % self.frames
+
 
 
     def read_memory(self, page_number):
