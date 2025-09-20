@@ -64,7 +64,7 @@ class ClockMMU(MMU):
             evict_page = self.page_table[evict_page_num]
 
             # check the use bit 
-            if evict_page.use_bit == False: # found the one to evict 
+            if not evict_page.use_bit: # found the one to evict 
                 if evict_page.dirty == True:
                     self.total_disk_write += 1
                     logger.debug(f"Saving dirty page {evict_page_num} to disk")
@@ -77,8 +77,7 @@ class ClockMMU(MMU):
             else:
                 logger.debug(f"Set use bit to False for {evict_page_num}")
                 evict_page.use_bit = False
-            
-            self.clock_hand = (self.clock_hand + 1) % self.frames
+                self.clock_hand = (self.clock_hand + 1) % self.frames
 
 
 
