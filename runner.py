@@ -13,7 +13,7 @@ REQUIRED_TRACES = {"gcc", "swim", "bzip", "sixpack"}
 RESULTS_FOLDER = Path("output")
 MEMSIM_SCRIPT = "memsim.py"  # Assuming it's in the same directory; adjust path if needed
 ALGOS = ["rand", "lru", "clock"]
-FRAMES = [frame for frame in range(1,2)]  # Your chosen range
+FRAMES = [2**x for x in range(1,12 + 1)]  # Your chosen range
 MODE = "quiet"
 
 def check():
@@ -48,7 +48,7 @@ def check():
                 logging.info("All traces are found.")
             else:
                 filenames = {f"{name}.trace" for name in missing}
-                msg = f"Please download the missing: {', '.join(filenames)}"
+                msg = f"Please download and put all in '{TRACE_FOLDER}/' as for the missing: {', '.join(filenames)}"
                 raise Exception(msg)
     except Exception as e:
         logging.error(e)
