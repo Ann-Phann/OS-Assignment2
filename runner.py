@@ -1,68 +1,90 @@
+import sys          # Cross platform Python executable
 import os           # Checking the directory
 import subprocess   # Running the terminal python script
-import glob         # Finding files
+# import glob         # Finding files
+from pathlib import Path
+import logging
+
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s [%(levelname)s] %(message)s', datefmt='%Y-%m-%d %H:%M')
 
 # Define constants
-TRACE_FOLDER = "trace"
-RESULTS_FOLDER = "output"
+TRACE_FOLDER = Path("trace")
+REQUIRED_TRACES = {"gcc", "swim", "bzip", "sixpack"} 
+RESULTS_FOLDER = Path("output")
 MEMSIM_SCRIPT = "memsim.py"  # Assuming it's in the same directory; adjust path if needed
 ALGOS = ["rand", "lru", "clock"]
-FRAMES = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096]  # Your chosen range
+FRAMES = [frame for frame in range(1,2)]  # Your chosen range
 MODE = "quiet"
 
-def check_and_prepare_trace_folder():
+def check():
     """
     Checks if the 'trace/' folder exists. If not, creates it and prompts the user to download traces.
     Returns True if traces are ready (folder exists and has *.trace files), False otherwise.
     """
-    if not os.path.exists(TRACE_FOLDER):
-        print(f"Folder '{TRACE_FOLDER}/' does not exist. Creating it now...")
-        os.makedirs(TRACE_FOLDER)
-        print(f"Please download the trace files (gcc.trace, swim.trace, bzip.trace, sixpack.trace) "
-              f"and place them in the '{TRACE_FOLDER}/' folder.")
-        print("You can decompress them if they are .gz files using 'gunzip -d *.gz' in the folder.")
-        input("Press Enter once you've added the files and are ready to proceed...")
-        return False  # Force re-check after user input
-    else:
-        # Check for *.trace files
-        trace_files = glob.glob(os.path.join(TRACE_FOLDER, "*.trace"))
-        if not trace_files:
-            print(f"No *.trace files found in '{TRACE_FOLDER}/'. Please add them now.")
-            input("Press Enter once you've added the files and are ready to proceed...")
-            return False
+    try:
+        if not TRACE_FOLDER.exists():
+            TRACE_FOLDER.mkdir(parents = True, exist_ok = True)
+            logging.info(f"Folder '{TRACE_FOLDER}/' does not exist. Creating it now...")
+            logging.debug(f"Please download the trace files (gcc.trace, swim.trace, bzip.trace, sixpack.trace) "
+                f"and place them in the '{TRACE_FOLDER}/' folder.")
         else:
-            print(f"Found {len(trace_files)} trace files in '{TRACE_FOLDER}/'. Proceeding...")
-            return True
+            logging.info(f"Folder '{TRACE_FOLDER}/' exists. Proceed with checking files...")
+            traces = {trace.stem for trace in TRACE_FOLDER.glob("*.trace")}
+            found = traces & REQUIRED_TRACES
+            missing = REQUIRED_TRACES - traces
 
-def run_simulations():
+            log_list = []
+            for item in REQUIRED_TRACES:
+                mark = "✓" if item in found else "x"
+                if mark == "✓":
+                    log_list.append(f"\t\t\t{mark} Found {item}.trace")
+                else:
+                    log_list.append(f"\t\t\t{mark} Missing {item}.trace")
+            
+            logging.info("Trace files checklist:\n" + "\n".join(log_list))
+            
+            ready = (len(missing) == 0)
+            if ready:
+                logging.info("All traces are found.")
+            else:
+                filenames = {f"{name}.trace" for name in missing}
+                msg = f"Please download the missing: {', '.join(filenames)}"
+                raise Exception(msg)
+    except Exception as e:
+        logging.error(e)
+
+def run():
     """
     Runs the memsim.py for all combinations of traces, algos, and frames.
     Saves output to results/ folder.
     """
-    os.makedirs(RESULTS_FOLDER, exist_ok=True)
-    
-    trace_files = glob.glob(os.path.join(TRACE_FOLDER, "*.trace"))
-    for trace_path in trace_files:
-        trace_name = os.path.basename(trace_path).replace(".trace", "")  # e.g., "gcc"
-        for algo in ALGOS:
-            for frames in FRAMES:
-                output_file = os.path.join(RESULTS_FOLDER, f"{trace_name}_{algo}_{frames}.txt")
-                
-                # Build command
-                command = [
-                    "python3", MEMSIM_SCRIPT, trace_path, str(frames), algo, MODE
-                ]
-                
-                print(f"Running: {' '.join(command)} > {output_file}")
-                
-                # Run the command and redirect output to file
-                with open(output_file, "w") as outfile:
-                    subprocess.run(command, stdout=outfile, stderr=subprocess.PIPE)
-                
-                print(f"Completed: {output_file}")
+    try:
+        if not RESULTS_FOLDER.exists():
+            RESULTS_FOLDER.mkdir(parents = True, exist_ok = True)
+            logging.info(f"Folder '{RESULTS_FOLDER}/' does not exist. Creating it now...")
+        
+        trace_files = {file for file in TRACE_FOLDER.glob("*.trace")}
+        for file in trace_files:
+            for algo in ALGOS:
+                for frame in FRAMES:
+                    output_file = os.path.join(RESULTS_FOLDER, f"{file.stem}_{algo}_{frame}.txt")
+                    
+                    # Build command
+                    command = [
+                        sys.executable, MEMSIM_SCRIPT, str(file), str(frame), algo, MODE
+                    ]
+                    
+                    logging.info(f"Running: {' '.join(command)} > {output_file}")
 
-if __name__ == "__main__":
-    while not check_and_prepare_trace_folder():
-        pass  # Loop until traces are ready
-    run_simulations()
-    print("All simulations completed. Results are in 'results/' folder.")
+                    # Run the command and redirect output to file
+                    with open(output_file, "w") as outfile:
+                        proc = subprocess.run(command, stdout = outfile, stderr = subprocess.PIPE, check = True, text = True)
+
+                    logging.info(f"Completed simulation. Output is saved at {output_file}")
+
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Process failed with exit %d", e.returncode)
+        logging.error("stderr:\n\t\t%s", (e.stderr or "<no stderr>").strip())
+    
+    except FileNotFoundError as e:
+        logging.error(f"Missing file(s) occur. Please check all valid files are available or run check(): \n\t\t", e)
