@@ -9,11 +9,11 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s [%(levelname)s] %(m
 
 # Define constants
 TRACE_FOLDER = Path("trace")
-REQUIRED_TRACES = {"gcc", "swim", "bzip", "sixpack"} 
+REQUIRED_TRACES = {"gcc", "bzip", "swim"} 
 RESULTS_FOLDER = Path("output")
-MEMSIM_SCRIPT = "memsim.py"  # Assuming it's in the same directory; adjust path if needed
-ALGOS = ["rand", "lru", "clock"]
-FRAMES = [2**x for x in range(1,12 + 1)]  # Your chosen range
+MEMSIM_SCRIPT = "simulator.py"  # Assuming it's in the same directory; adjust path if needed
+ALGOS = ["clock", "lru", "rand"]
+FRAMES = [x for x in range(1,1000 + 1)]  # Your chosen range
 MODE = "quiet"
 
 def check():
@@ -46,6 +46,8 @@ def check():
             ready = (len(missing) == 0)
             if ready:
                 logging.info("All traces are found.")
+                __run()
+
             else:
                 filenames = {f"{name}.trace" for name in missing}
                 msg = f"Please download and put all in '{TRACE_FOLDER}/' as for the missing: {', '.join(filenames)}"
@@ -53,7 +55,7 @@ def check():
     except Exception as e:
         logging.error(e)
 
-def run():
+def __run():
     """
     Runs the memsim.py for all combinations of traces, algos, and frames.
     Saves output to results/ folder.
@@ -64,10 +66,13 @@ def run():
             logging.info(f"Folder '{RESULTS_FOLDER}/' does not exist. Creating it now...")
         
         trace_files = {file for file in TRACE_FOLDER.glob("*.trace")}
+
         for file in trace_files:
             for algo in ALGOS:
+                
+                output_file = os.path.join(RESULTS_FOLDER, f"Out_{file.stem}_{algo}_{min(FRAMES)}-{max(FRAMES)}.csv")
+
                 for frame in FRAMES:
-                    output_file = os.path.join(RESULTS_FOLDER, f"{file.stem}_{algo}_{frame}.txt")
                     
                     # Build command
                     command = [
@@ -77,8 +82,13 @@ def run():
                     logging.info(f"Running: {' '.join(command)} > {output_file}")
 
                     # Run the command and redirect output to file
-                    with open(output_file, "w") as outfile:
-                        proc = subprocess.run(command, stdout = outfile, stderr = subprocess.PIPE, check = True, text = True)
+                    proc = subprocess.run(command, stdout = subprocess.PIPE, stderr = subprocess.PIPE, check = True, text = True)
+                    contents = ""
+                    lines = [line for line in proc.stdout.rstrip().split('\n')]
+                    contents = ','.join(lines)
+                    contents = contents + '\n'
+                    with open(output_file, "a") as outfile:
+                        outfile.write(contents)
 
                     logging.info(f"Completed simulation. Output is saved at {output_file}")
 
