@@ -9,10 +9,10 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s [%(levelname)s] %(m
 
 # Define constants
 TRACE_FOLDER = Path("trace")
-REQUIRED_TRACES = {"gcc", "swim", "bzip", "sixpack"} 
+REQUIRED_TRACES = {"gcc", "bzip", "swim"} 
 RESULTS_FOLDER = Path("output")
 MEMSIM_SCRIPT = "simulator.py"  # Assuming it's in the same directory; adjust path if needed
-ALGOS = ["rand", "lru", "clock"]
+ALGOS = ["clock", "lru", "rand"]
 FRAMES = [x for x in range(1,1000 + 1)]  # Your chosen range
 MODE = "quiet"
 
@@ -85,7 +85,7 @@ def __run():
                     proc = subprocess.run(command, stdout = subprocess.PIPE, stderr = subprocess.PIPE, check = True, text = True)
                     contents = ""
                     lines = [line for line in proc.stdout.rstrip().split('\n')]
-                    contents = ', '.join(lines)
+                    contents = ','.join(lines)
                     contents = contents + '\n'
                     with open(output_file, "a") as outfile:
                         outfile.write(contents)
