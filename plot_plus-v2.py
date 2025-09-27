@@ -59,8 +59,8 @@ def plot_group(ax, data_group, x_feature, y_feature, plot_type, label_prefix='')
     colors = cycle(['b', 'g', 'r', 'c', 'm', 'y', 'k'])
     markers = cycle(['o', 'v', '^', '<', '>', 's', 'p', '*', 'h', 'H', 'D'])
     for label, data in sorted(data_group.items()): # Sort for consistent order
-        X = data[:, FEATURES[x_feature]]
-        Y = data[:, FEATURES[y_feature]]
+        X = data[1000:4096, FEATURES[x_feature]]
+        Y = data[1000:4096, FEATURES[y_feature]]
         color = next(colors)
         if plot_type == 'line':
             ax.plot(X, Y, color=color, label=f"{label_prefix}{label}", linewidth=0.8)
@@ -130,9 +130,9 @@ def automate_plotting(mode='single-trace-algo', num_traces=None, num_algos=None)
                     # Plot only if missing
                     selected_traces = traces[:num_traces] if num_traces is not None else traces
                     num_subplots = len(selected_traces) if mode.startswith('combined') else 1
-                    fig = plt.figure(figsize=(10 * num_subplots, 6))
+                    fig = plt.figure(figsize=(3 * num_subplots, 6))
                     if num_subplots > 1:
-                        axs = fig.subplots(1, num_subplots, sharey=True)  # Share y for comparison
+                        axs = fig.subplots(2, int(num_subplots / 2), sharey=True, sharex=True)  # Share y for comparison
                     else:
                         axs = fig.add_subplot(111)
                     if isinstance(axs, np.ndarray):
