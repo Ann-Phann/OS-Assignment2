@@ -1,5 +1,6 @@
 from clockmmu import ClockMMU
 from lrummu import LruMMU
+from optimal import OptimalMMU
 from randmmu import RandMMU
 
 import sys
@@ -41,8 +42,10 @@ def main():
         mmu = LruMMU(frames)
     elif replacement_mode == "clock":
         mmu = ClockMMU(frames)
+    elif replacement_mode == "optimal":
+        mmu = OptimalMMU(frames)
     else:
-        print("Invalid replacement mode. Valid options are [rand, lru, esc]")
+        print("Invalid replacement mode. Valid options are [rand, lru, esc], optimal")
         return
 
     debug_mode  = sys.argv[4]
@@ -62,24 +65,44 @@ def main():
 
     no_events = 0
 
+    trace_list = []
+    future_access = {} 
 
-    with open(input_file, 'r') as trace_file:
-        for trace_line in trace_file:
-            trace_cmd = trace_line.strip().split(" ")
-            logical_address = int(trace_cmd[0], 16)
-            page_number = logical_address >>  PAGE_OFFSET
+    # with open(input_file, 'r') as trace_file:
+    for trace_line in trace_contents:
+        trace_cmd = trace_line.strip().split(" ")
+        logical_address = int(trace_cmd[0], 16)
+        page_number = logical_address >>  PAGE_OFFSET
+        trace_list.append((page_number, trace_cmd[1])) # (page number, R/W)
 
+         
+        if replacement_mode == "optimal":
+            for i, (page_number, mode) in enumerate(trace_list):
+                if page_number not in future_access:
+                    future_access[page_number] = []
+                future_access[page_number].append(i)
 
-            # Process read or write
-            if trace_cmd[1] == "R":
+    
+
+    for i, (page_number, mode) in enumerate(trace_list):
+        if mode not in ("R", "W"):
+            print(f"Badly formatted file. Error on line {no_events + 1}")
+            return
+        # Process read or write
+        if replacement_mode == "optimal":
+            if mode == "R":
+                mmu.read_memory(page_number, i, future_access)
+            elif mode == "W":
+                mmu.write_memory(page_number, i, future_access)
+        else:     
+            if mode == "R":
                 mmu.read_memory(page_number)
-            elif trace_cmd[1] == "W":
+            elif mode == "W":
                 mmu.write_memory(page_number)
-            else:
-                print(f"Badly formatted file. Error on line {no_events + 1}")
-                return
 
-            no_events += 1
+        no_events += 1
+
+
 
     # TODO: Print results
     print(f"total memory frames: {frames}")
