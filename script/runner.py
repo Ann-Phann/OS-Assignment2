@@ -8,12 +8,13 @@ import logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s [%(levelname)s] %(message)s', datefmt='%Y-%m-%d %H:%M')
 
 # Define constants
+SOURCE = Path("script")
 TRACE_FOLDER = Path("trace")
 REQUIRED_TRACES = {"gcc", "bzip", "swim"} 
 RESULTS_FOLDER = Path("output")
 MEMSIM_SCRIPT = "simulator.py"  # Assuming it's in the same directory; adjust path if needed
 ALGOS = ["clock", "lru", "rand"]
-FRAMES = [x for x in range(1,1000 + 1)]  # Your chosen range
+FRAMES = [x for x in range(1,4096 + 1)]  # Your chosen range
 MODE = "quiet"
 
 def check():
@@ -76,7 +77,7 @@ def __run():
                     
                     # Build command
                     command = [
-                        sys.executable, MEMSIM_SCRIPT, str(file), str(frame), algo, MODE
+                        sys.executable, SOURCE.joinpath(MEMSIM_SCRIPT), str(file), str(frame), algo, MODE
                     ]
                     
                     logging.info(f"Running: {' '.join(command)} > {output_file}")

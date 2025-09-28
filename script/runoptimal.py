@@ -2,6 +2,7 @@ from clockmmu import ClockMMU
 from lrummu import LruMMU
 from optimal import OptimalMMU
 from randmmu import RandMMU
+from collections import deque  # For efficient popleft in Optimal
 
 import sys
 
@@ -76,12 +77,12 @@ def main():
         trace_list.append((page_number, trace_cmd[1])) # (page number, R/W)
 
          
-        if replacement_mode == "optimal":
-            for i, (page_number, mode) in enumerate(trace_list):
-                if page_number not in future_access:
-                    future_access[page_number] = []
-                future_access[page_number].append(i)
-
+    # Build future_access ONLY for optimal, and ONLY after full trace is read
+    if replacement_mode == "optimal":
+        for i, (page_number, mode) in enumerate(trace_list):
+            if page_number not in future_access:
+                future_access[page_number] = deque()  # Use deque for O(1) popleft
+            future_access[page_number].append(i)
     
 
     for i, (page_number, mode) in enumerate(trace_list):

@@ -1,5 +1,6 @@
 from mmu import MMU
 import logging
+from collections import deque
 from page import Page
 
 logger = logging.getLogger(__name__)
@@ -47,9 +48,11 @@ class OptimalMMU(MMU):
         page_to_evict = None
 
         for page_num in self.memory:
+            # clean up past access (use popleft for O(1))
+            page_future = future_access.get(page_num, deque())
             # clean up past access
             while future_access[page_num] and future_access[page_num][0] <= current_index:
-                future_access[page_num].pop(0)
+                page_future.popleft()
 
             # find the next use of this page
             if future_access[page_num]:

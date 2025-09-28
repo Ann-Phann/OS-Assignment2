@@ -62,6 +62,8 @@ def main():
 
     no_events = 0
 
+    trace_list = []
+    future_access = {} 
 
     with open(input_file, 'r') as trace_file:
         for trace_line in trace_file:
@@ -69,6 +71,11 @@ def main():
             logical_address = int(trace_cmd[0], 16)
             page_number = logical_address >>  PAGE_OFFSET
 
+        if replacement_mode == "optimal":
+            for i, (page_number, mode) in enumerate(trace_list):
+                if page_number not in future_access:
+                    future_access[page_number] = []
+                future_access[page_number].append(i)
 
             # Process read or write
             if trace_cmd[1] == "R":
