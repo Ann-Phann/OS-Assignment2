@@ -5,24 +5,38 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s', datefmt='%Y-%m-%d %H:%M')
+from matplotlib.lines import Line2D
+
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s [%(levelname)s] %(message)s',
+                    datefmt='%Y-%m-%d %H:%M')
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
+
 rc('font', **{'family': 'serif', 'serif': ['Computer Modern']})
 rc('text', usetex=True)
+
 OUTPUT_FOLDER = Path("graph")
 DATA_FOLDER = Path("output")
-TRACE_FOLDER = Path('trace') # Not used for CSVs, but kept for consistency
+
 FEATURES = {
-    'fs': 0, # Frame size
-    'tdr': 2, # Total disk read
-    'tdw': 3, # Total disk write
-    'pfr': -1 # Page fault rate
+    'fs': 0,   # Frame size (x-axis index in CSV rows)
+    'tdr': 2,  # Total disk read
+    'tdw': 3,  # Total disk write
+    'pfr': -1  # Page fault rate
 }
-# Get pairwise unique feature combinations (no duplicates, x != y)
-FEATURE_PAIRS = list(combinations(FEATURES.keys(), 2))
-PLOT_TYPES = ['line', 'scatter'] # Supported plot types
+
+# Fixed algorithm order and colors (keeps consistent mapping across plots)
+ALGO_ORDER = ['lru', 'rand', 'clock', 'optimal']
+ALGO_COLORS = {
+    'lru': 'tab:blue',
+    'rand': 'tab:green',
+    'clock': 'tab:red',
+    'optimal': 'tab:purple'
+}
+
+PLOT_TYPES = ['line', 'scatter']  # Supported plot types
+
 def get_feature_label(feature):
-    """Map feature key to LaTeX label for axes."""
     labels = {
         'fs': r'Frame Size',
         'tdr': r'Total Disk Reads',
@@ -30,20 +44,21 @@ def get_feature_label(feature):
         'pfr': r'Page Fault Rate'
     }
     return labels.get(feature, feature)
+
 def load_csv_data():
-    """Load and group all CSV data by range > trace > algo."""
-    data_dict = {} # range_str -> trace -> algo -> np.array
-    csv_files = list(DATA_FOLDER.glob('Out_*.csv')) # Only matching format
+    """
+    Load and group all CSV data by range -> trace -> algo -> numpy array.
+    Expects filenames like Out_<trace>_<algo>_<range>.csv
+    """
+    data_dict = {}
+    csv_files = list(DATA_FOLDER.glob('Out_*.csv'))
     for file in csv_files:
-        basename = file.stem # Without .csv
+        basename = file.stem
         if basename.startswith('Out_'):
-            parts = basename[4:].split('_') # Skip 'Out_', split trace_algo_range
+            parts = basename[4:].split('_')  # trace_algo_range
             if len(parts) == 3:
                 trace, algo, range_str = parts
-                if range_str not in data_dict:
-                    data_dict[range_str] = {}
-                if trace not in data_dict[range_str]:
-                    data_dict[range_str][trace] = {}
+                data_dict.setdefault(range_str, {}).setdefault(trace, {})[algo] = None
                 try:
                     data = np.genfromtxt(file, delimiter=',')
                     data_dict[range_str][trace][algo] = data
@@ -53,173 +68,132 @@ def load_csv_data():
             else:
                 logging.warning(f"Skipping invalid filename: {file}")
     return data_dict
-def plot_group(ax, data_group, x_feature, y_feature, plot_type, label_prefix='', data_start=None, data_end=None, show_legend=True):
-    """Plot a group of data (multiple algos/traces) on one axes. Removed fig from params as not used."""
-    # Color and marker cycles
-    colors = cycle(['b', 'g', 'r', 'c', 'm', 'y', 'k'])
-    markers = cycle(['o', 'v', '^', '<', '>', 's', 'p', '*', 'h', 'H', 'D'])
-    for label, data in sorted(data_group.items()): # Sort for consistent order
-        if data_start is not None or data_end is not None:
-            data = data[data_start:data_end]
-        X = data[:, FEATURES[x_feature]]
-        Y = data[:, FEATURES[y_feature]]
-        color = next(colors)
-        if plot_type == 'line':
-            ax.plot(X, Y, color=color, label=f"{label_prefix}{label}", linewidth=0.8)
-        elif plot_type == 'scatter':
-            marker = next(markers)
-            ax.scatter(X, Y, color=color, label=f"{label_prefix}{label}", s=8, marker=marker)
-    if show_legend:
-        ax.legend(title='Items', loc='upper right')  # Place legend inside the plot area
-    ax.grid(True)
-def automate_plotting(mode='single-trace-algo', num_traces=None, num_algos=None, data_start=None, data_end=None):
+
+def _safe_slice(data, start_one_based, end_one_based):
     """
-    Automates plotting based on mode.
-    - Modes:
-        - 'combined-trace-algo': All traces and algos in one figure per range/pair/type (if >=2 traces/algos).
-        - 'combined-trace-single-algo': All traces per figure, but one algo per plot.
-        - 'single-trace-algo': One trace per figure, all algos.
-        - 'single-algo-single-trace': One trace and one algo per figure.
-    - num_traces/num_algos: Limit for combined modes (e.g., top N by name sort).
-    - data_start/data_end: Optional row indices to slice data from CSVs (e.g., data_start=1000, data_end=4096).
-    - Checks for existing PDFs and skips if present.
-    - Logs counts of existing/needed PDFs.
+    Convert 1-based inclusive slice (start,end) to python slice [start0:end0).
+    Returns the sliced array or empty array if out-of-range.
     """
+    if data is None or data.size == 0:
+        return np.empty((0,))
+    nrows = data.shape[0]
+    start_idx = max(0, int(start_one_based) - 1)
+    end_idx = int(end_one_based)
+    if start_idx >= nrows:
+        return np.empty((0, data.shape[1])) if data.ndim > 1 else np.empty((0,))
+    end_idx = min(end_idx, nrows)
+    return data[start_idx:end_idx]
+
+def automate_plotting_slices_per_axis(data_slices,
+                                      x_feature='fs',
+                                      y_feature='pfr',
+                                      plot_type='line'):
+    """
+    Create one figure per trace. Each figure contains 4 axes (2x2).
+    Each axis corresponds to one data_slice (1-based inclusive). On that axis,
+    plot all algorithms (lru, rand, clock, optimal) for that slice.
+    Only the FIRST axis shows a legend (with all algos/colors).
+    """
+    if plot_type not in PLOT_TYPES:
+        raise ValueError(f"Unsupported plot_type: {plot_type}")
+
     data_dict = load_csv_data()
+    if not data_dict:
+        logging.error("No data found in output/ (Out_*.csv). Exiting.")
+        return
+
+    slice_suffix = "_".join([f"{s}-{e}" for s, e in data_slices])
+    slice_suffix = f"_slices_{slice_suffix}"
+
     total_needed = 0
     total_existing = 0
     produced = 0
-    slice_suffix = ''
-    if data_start is not None or data_end is not None:
-        start_val = data_start if data_start is not None else 0
-        end_val = data_end if data_end is not None else 'end'
-        slice_suffix = f"_slice_{start_val}-{end_val}"
-    # Calculate total possible based on mode
-    for range_str in data_dict:
+
+    for range_str in sorted(data_dict.keys()):
         traces = sorted(data_dict[range_str].keys())
-        algos = set() # Unique algos across traces
         for trace in traces:
-            algos.update(data_dict[range_str][trace].keys())
-        algos = sorted(algos)
-        if mode.startswith('combined') and (len(traces) < 2 or len(algos) < 2):
-            logging.info(f"Skipping range {range_str} for {mode}: <2 traces/algos")
-            continue
-        for x_feature, y_feature in FEATURE_PAIRS:
-            for plot_type in PLOT_TYPES:
-                # Build filename based on mode
-                if mode == 'combined-trace-algo':
-                    name_parts = [f"combined_traces_algos_{range_str}_{x_feature}-{y_feature}_{plot_type}{slice_suffix}"]
-                elif mode == 'combined-trace-single-algo':
-                    # One plot per algo, all traces
-                    name_parts = []
-                    selected_algos = algos[:num_algos] if num_algos is not None else algos
-                    for algo in selected_algos:
-                        name_parts.append(f"combined_traces_{algo}_{range_str}_{x_feature}-{y_feature}_{plot_type}{slice_suffix}")
-                elif mode == 'single-trace-algo':
-                    # One plot per trace, all algos
-                    selected_traces = traces[:num_traces] if num_traces is not None else traces
-                    name_parts = [f"{trace}_algos_{range_str}_{x_feature}-{y_feature}_{plot_type}{slice_suffix}" for trace in selected_traces]
-                elif mode == 'single-algo-single-trace':
-                    # One plot per trace-algo pair
-                    name_parts = []
-                    selected_traces = traces[:num_traces] if num_traces is not None else traces
-                    selected_algos = algos[:num_algos] if num_algos is not None else algos
-                    for trace in selected_traces:
-                        for algo in selected_algos:
-                            if algo in data_dict[range_str].get(trace, {}):
-                                name_parts.append(f"{trace}_{algo}_{range_str}_{x_feature}-{y_feature}_{plot_type}{slice_suffix}")
-                else:
-                    raise ValueError(f"Unknown mode: {mode}")
-                for base_name in name_parts:
-                    pdf_path = OUTPUT_FOLDER / f"{base_name}.pdf"
-                    total_needed += 1
-                    if pdf_path.exists():
-                        total_existing += 1
+            base_name = f"{trace}_ranges_{range_str}_{x_feature}-{y_feature}_{plot_type}{slice_suffix}"
+            pdf_path = OUTPUT_FOLDER / f"{base_name}.pdf"
+            total_needed += 1
+            if pdf_path.exists():
+                total_existing += 1
+                continue
+
+            # Create 2x2 grid (4 axes)
+            fig, axes = plt.subplots(2, 2, figsize=(2 * 4, 7))
+            axes = axes.flatten()
+            all_data = data_dict[range_str].get(trace, {})
+
+            # Plot per-axis (each slice), plotting all algos together.
+            for ax_idx, sl in enumerate(data_slices):
+                ax = axes[ax_idx]
+                s_one, e_one = sl
+                ax_has_data = False
+
+                for algo in ALGO_ORDER:
+                    data = all_data.get(algo, None)
+                    if data is None:
                         continue
-                    # Plot only if missing
-                    selected_traces = traces[:num_traces] if num_traces is not None else traces
-                    num_subplots = len(selected_traces) if mode.startswith('combined') else 1
-                    fig = plt.figure(figsize=(3 * num_subplots, 6))
-                    if num_subplots > 1:
-                        axs = fig.subplots(2, int(num_subplots / 2), sharey=True, sharex=True) # Share y for comparison
+                    slice_data = _safe_slice(data, s_one, e_one)
+                    if slice_data.size == 0:
+                        continue
+                    # Extract X and Y
+                    try:
+                        X = slice_data[:, FEATURES[x_feature]]
+                        Y = slice_data[:, FEATURES[y_feature]]
+                    except Exception as ex:
+                        logging.error(f"Malformed data for {trace}/{algo}: {ex}")
+                        continue
+
+                    color = ALGO_COLORS.get(algo, None)
+                    label = algo  # label is set but legend shown only on first axis
+                    if plot_type == 'line':
+                        ax.plot(X, Y, label=label, color=color, linewidth=0.9)
                     else:
-                        axs = fig.add_subplot(111)
-                    if isinstance(axs, np.ndarray):
-                        axs = axs.flatten()
-                    else:
-                        axs = [axs]
-                    if mode == 'combined-trace-algo':
-                        # One fig, subplots per trace, each with algos
-                        for i, trace in enumerate(selected_traces):
-                            ax = axs[i]
-                            all_data = data_dict[range_str][trace]
-                            selected_algos = algos[:num_algos] if num_algos is not None else algos
-                            selected_data = {algo: all_data[algo] for algo in selected_algos if algo in all_data}
-                            plot_group(ax, selected_data, x_feature, y_feature, plot_type, label_prefix='Algo: ', data_start=data_start, data_end=data_end, show_legend=(i == 0))
-                            ax.set_title(rf"{trace.capitalize()}")
-                            ax.set_xlabel(get_feature_label(x_feature), size=11)
-                            if i == 0:
-                                ax.set_ylabel(get_feature_label(y_feature), size=11)
-                    elif mode == 'combined-trace-single-algo':
-                        # One fig per algo, subplots per trace, each with single algo
-                        parts = base_name.split('_')
-                        algo = parts[2] # combined_traces_{algo}_...
-                        for i, trace in enumerate(selected_traces):
-                            ax = axs[i]
-                            if algo in data_dict[range_str].get(trace, {}):
-                                single_data = {algo: data_dict[range_str][trace][algo]}
-                                plot_group(ax, single_data, x_feature, y_feature, plot_type, data_start=data_start, data_end=data_end, show_legend=(i == 0))
-                            ax.set_title(rf"{trace.capitalize()} ({algo})")
-                            ax.set_xlabel(get_feature_label(x_feature), size=11)
-                            if i == 0:
-                                ax.set_ylabel(get_feature_label(y_feature), size=11)
-                    elif mode == 'single-trace-algo':
-                        # Single fig/ax per trace
-                        parts = base_name.split('_')
-                        trace = parts[0]
-                        ax = axs[0]
-                        all_data = data_dict[range_str][trace]
-                        selected_algos = algos[:num_algos] if num_algos is not None else algos
-                        selected_data = {algo: all_data[algo] for algo in selected_algos if algo in all_data}
-                        plot_group(ax, selected_data, x_feature, y_feature, plot_type, label_prefix='Algo: ', data_start=data_start, data_end=data_end)
-                        ax.set_title(rf"{trace.capitalize()} ({get_feature_label(y_feature)} vs {get_feature_label(x_feature)})")
-                        ax.set_xlabel(get_feature_label(x_feature), size=11)
-                        ax.set_ylabel(get_feature_label(y_feature), size=11)
-                    elif mode == 'single-algo-single-trace':
-                        # Single fig/ax per trace-algo
-                        parts = base_name.split('_')
-                        trace = parts[0]
-                        algo = parts[1]
-                        ax = axs[0]
-                        data = data_dict[range_str][trace][algo]
-                        if data_start is not None or data_end is not None:
-                            data = data[data_start:data_end]
-                        X = data[:, FEATURES[x_feature]]
-                        Y = data[:, FEATURES[y_feature]]
-                        if plot_type == 'line':
-                            ax.plot(X, Y, label=f"{trace}_{algo}")
-                        elif plot_type == 'scatter':
-                            ax.scatter(X, Y, label=f"{trace}_{algo}")
-                        ax.legend(loc='upper left')  # Inside for single plots
-                        ax.set_title(rf"{trace.capitalize()} {algo} ({get_feature_label(y_feature)} vs {get_feature_label(x_feature)})")
-                        ax.set_xlabel(get_feature_label(x_feature), size=11)
-                        ax.set_ylabel(get_feature_label(y_feature), size=11)
-                    fig.suptitle(rf"{start_val}-{end_val} data slice, {get_feature_label(y_feature)} vs {get_feature_label(x_feature)}", size=15)
-                    fig.tight_layout(rect=[0, 0.03, 1, 0.95])  # Adjust layout to leave space for suptitle
-                    fig.savefig(pdf_path, format='pdf', bbox_inches='tight')
-                    plt.close(fig)
-                    produced += 1
+                        ax.scatter(X, Y, label=label, color=color, s=12)
+                    ax_has_data = True
+
+                ax.set_title(f"{s_one + 1}-{e_one + 1}", fontsize=10)
+                ax.set_xlabel(get_feature_label(x_feature), size=9)
+                ax.set_ylabel(get_feature_label(y_feature), size=9)
+                ax.grid(True)
+                if not ax_has_data:
+                    ax.text(0.5, 0.5, 'No data', ha='center', va='center', transform=ax.transAxes, fontsize=10)
+                    ax.set_xticks([])
+                    ax.set_yticks([])
+
+            # if fewer than 4 slices, hide extra axes
+            n_slices = len(data_slices)
+            if n_slices < 4:
+                for i in range(n_slices, 4):
+                    axes[i].axis('off')
+
+            # Build legend handles once (consistent order/colors) and put in FIRST axis
+            legend_handles = []
+            legend_labels = []
+            for algo in ALGO_ORDER:
+                # Create a Line2D handle for the legend (marker+line) using algo color
+                color = ALGO_COLORS.get(algo, 'k')
+                handle = Line2D([0], [0], color=color, lw=1, marker='o', markersize=6)
+                legend_handles.append(handle)
+                legend_labels.append(algo)
+            # Place legend inside first axis (upper right)
+            axes[0].legend(title='Algorithm', fontsize='medium',
+                           loc='upper right', frameon=True)
+
+            # fig.suptitle(rf"{trace.capitalize()} -- {get_feature_label(y_feature)} vs {get_feature_label(x_feature)}", size=12)
+            fig.tight_layout(rect=[0, 0.03, 1, 0.94])
+            fig.savefig(pdf_path, format='pdf', bbox_inches='tight')
+            plt.close(fig)
+            produced += 1
+
     logging.info(f"Total PDFs needed: {total_needed}")
     logging.info(f"Existing PDFs: {total_existing}")
     logging.info(f"New PDFs produced: {produced}")
+
 if __name__ == "__main__":
     OUTPUT_FOLDER.mkdir(parents=True, exist_ok=True)
-    # Example calls; adjust as needed
-    automate_plotting(mode='combined-trace-algo', data_start=1, data_end=200)
-    automate_plotting(mode='combined-trace-algo', data_start=1, data_end=4096)
-    automate_plotting(mode='combined-trace-algo', data_start=1000, data_end=4096)
-    automate_plotting(mode='combined-trace-algo', data_start=200, data_end=500)
-    automate_plotting(mode='combined-trace-algo', data_start=500, data_end=700)
-    automate_plotting(mode='combined-trace-algo', data_start=3800, data_end=4096)
-    # automate_plotting(mode='combined-trace-algo', num_traces=4, num_algos=3)
-    # etc.
+
+    # Example: four 1-based inclusive ranges per axis
+    slices = [(0, 199), (0, 9), (9, 74), (74, 199)]
+    automate_plotting_slices_per_axis(slices, x_feature='fs', y_feature='pfr', plot_type='line')
